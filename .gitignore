@@ -1,0 +1,7 @@
+venv/
+.env
+*.csv
+*.faiss
+*.db
+NAKATA_Lyuta_1_pres_042025.pptx
+*.pkl
