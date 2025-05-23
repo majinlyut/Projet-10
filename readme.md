@@ -11,7 +11,7 @@ Ce projet est un RAG qui recommande des événements culturels à Paris en s'app
 - Indexation des descriptions via embeddings Mistral + FAISS
 - Interface conversationnelle pour recommander des événements via Streamlit
 - Historique conversationnel et prompt personnalisé
-- Tests de validation sur les données (ville, date, doublons)
+- Tests de validation sur les données (ville, date)
 
 ---
 
@@ -33,17 +33,17 @@ Ce projet est un RAG qui recommande des événements culturels à Paris en s'app
 git clone https://github.com/ton-user/ton-repo.git
 cd ton-repo
 ```
-2.Crée un environnement virtuel :
+2.  Crée un environnement virtuel :
 ```bash
 python -m venv venv
 venv\Scripts\activate 
 ```
-3.Installe les dépendances :
+3.  Installe les dépendances :
 ```bash
 pip install -r requirements.txt
 python -m spacy download fr_core_news_sm
 ```
-4.Crée un fichier .env avec ta clé API :
+4.  Crée un fichier .env avec ta clé API :
 ```bash
 MISTRAL_API_KEY=ta_clé_mistral
 ```
