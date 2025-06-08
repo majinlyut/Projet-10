@@ -1,4 +1,5 @@
 import os
+import json
 import streamlit as st
 from mistralai.client import MistralClient
 from mistralai.models.chat_completion import ChatMessage
@@ -9,7 +10,7 @@ from langchain_core.embeddings import Embeddings
 # --- Mistral API key ---
 load_dotenv()
 api_key = os.getenv("MISTRAL_API_KEY")
-model = "mistral-small"
+model = "mistral-medium"
 
 if not api_key:
     st.error("❌ Clé API Mistral non trouvée.")
@@ -40,39 +41,46 @@ except Exception as e:
     st.error(f"❌ Erreur chargement index FAISS : {e}")
     st.stop()
 
-# --- Prompt système  ---
+# --- Prompt système ---
 SYSTEM_PROMPT = """Tu es un assistant culturel pour Paris.
 
 Ta mission est de recommander des événements aux utilisateurs en te basant uniquement sur le CONTEXTE fourni ci-dessous.
 
-Lorsque tu cites un événement respecte le format suivant :
-📌 **{{titre}}**  
-📍 _Lieu : {{lieu}}_ 
-🏠 _Adresse : {{adresse}}_ 
-🗓️ _du {{date de début}} au {{date de fin}}_  
+Quand tu cites un événement, respecte **strictement** le format suivant (avec des sauts de ligne et le bon usage du Markdown) :
+
+📌 **{{title}}**  
+📍 _Lieu : {{lieu}}_  
+🏠 _Adresse : {{adresse}}_  
+🗓️ _{{date formatée}}_  
 📝 {{courte description}}
 
-
-
-- Sépare chaque événement par une ligne vide.
-- Formate les dates comme ca: "du 1er janvier au 5 février 2025" ou si une seule date: : "le 1er janvier 2025"
-- N’ajoute pas de lien externe.
-- Si la question utilisateur n'est pas claire, demande des précisions.
-- Si la question est hors sujet, indique que tu ne réponds que sur les événements ayant lieu à Paris.
-- Si tu as répondu à la question de l'utilisateur, termine par "As-tu d'autres questions ?"
-
+**Règles à suivre :**
+- Un retour à la ligne après chaque ligne, puis une ligne vide entre chaque événement.
+- Le title est en gras `**`, les lieux et adresses en italique `_`.
+- Formate les dates comme ceci :  
+  • Pour une seule date : “le 4 mai 2025”  
+  • Pour une plage dans le même mois : “du 4 au 12 mai 2025”  
+  • Pour deux mois différents : “du 28 avril au 2 mai 2025”
+- N’ajoute aucun lien externe.
+- Ne mentionne que les événements présents dans le CONTEXTE.
+- Si possible répond avec au moins 2 événements pertinents.
+- Si la question est floue, demande des précisions à l'utilisateur.
+- Si la question est hors sujet, indique que tu ne réponds que sur les événements à Paris.
+- Termine chaque réponse par **“As-tu d’autres questions ?”**
 
 ---
 
-CONTEXTE :
+CONTEXTE :  
 {context_str}
 
 ---
 
-QUESTION :
+QUESTION :  
 {question}
 
-RÉPONSE DE L'ASSISTANT :
+---
+
+RÉPONSE DE L’ASSISTANT :
 """
 
 # --- Historique conversationnel ---
@@ -88,7 +96,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# --- Formatage dynamique des documents ---
+# --- Formatage dynamique des documents (pour affichage assistant) ---
 def format_doc(doc, score):
     title = doc.metadata.get("title", "Titre inconnu")
     lieu = doc.metadata.get("location_name", "Lieu inconnu")
@@ -105,29 +113,42 @@ def format_doc(doc, score):
         f"📝 {description}"
     )
 
-
+# --- Enrichissement des contextes pour RAGAS ---
+def enrich_with_metadata(doc):
+    title = doc.metadata.get("title", "")
+    lieu = doc.metadata.get("location_name", "")
+    adresse = doc.metadata.get("location_address", "")
+    debut = doc.metadata.get("firstdate_begin", "")
+    fin = doc.metadata.get("lastdate_end", "")
+    description = doc.page_content.strip()
+    return f"{title} - {lieu} - {adresse} - du {debut} au {fin} - {description}"
 
 # --- Entrée utilisateur ---
 if user_input := st.chat_input("Quel type d'événement t'intéresse ?"):
 
-    # Affiche le message utilisateur
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.write(user_input)
 
-    # Recherche vectorielle
     try:
         results = vectorstore.similarity_search_with_score(user_input, k=4)
+
+        # Texte enrichi pour affichage assistant
+        context_str = "\n\n---\n\n".join([format_doc(doc, score) for doc, score in results])
+
+        # Contextes enrichis pour logs et évaluation RAGAS
+        raw_contexts = [enrich_with_metadata(doc) for doc, score in results]
+
+        print("✅ placeholder_contexts pour RAGAS :")
+        print(json.dumps(raw_contexts, indent=2, ensure_ascii=False))
+
     except Exception:
         st.error("❌ Erreur pendant la recherche vectorielle.")
         results = []
-
-    if not results:
         context_str = "Aucune information pertinente trouvée."
-    else:
-        context_str = "\n\n---\n\n".join([format_doc(doc, score) for doc, score in results])
+        raw_contexts = []
 
-    # Génération du prompt complet
+    # Prompt final
     final_prompt = SYSTEM_PROMPT.format(context_str=context_str, question=user_input)
 
     # Appel à l’API Mistral
@@ -148,5 +169,4 @@ if user_input := st.chat_input("Quel type d'événement t'intéresse ?"):
 
         placeholder.markdown(assistant_reply, unsafe_allow_html=False)
 
-    # Ajout dans l'historique
     st.session_state.messages.append({"role": "assistant", "content": assistant_reply})

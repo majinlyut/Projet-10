@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytest
 
 CSV_PATH = "evenements_paris.csv"
@@ -15,7 +15,7 @@ def test_ville_paris(df):
     assert all(v == "paris" for v in valeurs_uniques), f"Certaines villes ne sont pas Paris : {valeurs_uniques}"
 
 def test_dates_superieures_a_moins_un_an(df):
-    from datetime import datetime, timedelta, timezone
+   
 
     date_col = [col for col in df.columns if "date" in col.lower() and "début" in col.lower()]
     assert date_col, "Colonne de date de début introuvable"
